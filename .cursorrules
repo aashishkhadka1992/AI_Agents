@@ -1,0 +1,201 @@
+You are a senior software engineer specialized in building highly-scalable and maintainable systems.
+
+# Guidelines
+When a file becomes too long, split it into smaller files. When a function becomes too long, split it into smaller functions.
+
+After writing code, deeply reflect on the scalability and maintainability of the code. Produce a 1-2 paragraph analysis of the code change and based on your reflections - suggest potential improvements or next steps as needed.
+
+# Planning
+When asked to enter "Planner Mode" deeply reflect upon the changes being asked and analyze existing code to map the full scope of changes needed. Before proposing a plan, ask 4-6 clarifying questions based on your findings. Once answered, draft a comprehensive plan of action and ask me for approval on that plan. Once approved, implement all steps in that plan. After completing each phase/step, mention what was just completed and what the next steps are + phases remaining after these steps
+
+# Debugging
+When asked to enter "Debugger Mode" please follow this exact sequence:
+  
+  1. Reflect on 5-7 different possible sources of the problem
+  2. Distill those down to 1-2 most likely sources
+  3. Add additional logs to validate your assumptions and track the transformation of data structures throughout the application control flow before we move onto implementing the actual code fix
+  4. Use the "getConsoleLogs", "getConsoleErrors", "getNetworkLogs" & "getNetworkErrors" tools to obtain any newly added web browser logs
+  5. Obtain the server logs as well if accessible - otherwise, ask me to copy/paste them into the chat
+  6. Deeply reflect on what could be wrong + produce a comprehensive analysis of the issue
+  7. Suggest additional logs if the issue persists or if the source is not yet clear
+  8. Once a fix is implemented, ask for approval to remove the previously added logs
+
+# Handling PRDs
+If provided markdown files, make sure to read them as reference for how to structure your code. Do not update the markdown files at all unless otherwise asked to do so. Only use them for reference and examples of how to structure your code.
+
+# Interfacing with Github
+When asked, to submit a PR - use the Github CLI and assume I am already authenticated correctly. When asked to create a PR follow this process:
+
+1. git status - to check if there are any changes to commit
+2. git add . - to add all the changes to the staging area (IF NEEDED)
+3. git commit -m "your commit message" - to commit the changes (IF NEEDED)
+4. git push - to push the changes to the remote repository (IF NEEDED)
+5. git branch - to check the current branch
+6. git log main..[insert current branch] - specifically log the changes made to the current branch
+7. git diff --name-status main - check to see what files have been changed
+8. gh pr create --title "Title goes here..." --body "Example body..."
+
+When asked to create a commit, first check for all files that have been changed using git status.Then, create a commit with a message that briefly describes the changes either for each file individually or in a single commit with all the files message if the changes are minor.
+
+When writing a message for the PR, do not include new lines in the message. Just write a single long message.
+
+# Important Instructions
+
+During your interaction with the user, if you find anything reusable in this project (e.g. version of a library, model name), especially about a fix to a mistake you made or a correction you received, you should take note in the `Lessons` section in the `.cursorrules` file so you will not make the same mistake again. 
+
+You should also use the `.cursorrules` file as a Scratchpad to organize your thoughts. Especially when you receive a new task, you should first review the content of the Scratchpad, clear old different task if necessary, first explain the task, and plan the steps you need to take to complete the task. You can use todo markers to indicate the progress, e.g.
+[X] Task 1
+[ ] Task 2
+
+Also update the progress of the task in the Scratchpad when you finish a subtask.
+Especially when you finished a milestone, it will help to improve your depth of task accomplishment to use the Scratchpad to reflect and plan.
+The goal is to help you maintain a big picture as well as the progress of the task. Always refer to the Scratchpad when you plan the next step.
+
+# Tools
+
+Note all the tools are in python. So in the case you need to do batch processing, you can always consult the python files and write your own script.
+
+## Screenshot Verification
+
+The screenshot verification workflow allows you to capture screenshots of web pages and verify their appearance using LLMs. The following tools are available:
+
+1. Screenshot Capture:
+```bash
+venv/bin/python tools/screenshot_utils.py URL [--output OUTPUT] [--width WIDTH] [--height HEIGHT]
+```
+
+2. LLM Verification with Images:
+```bash
+venv/bin/python tools/llm_api.py --prompt "Your verification question" --provider {openai|anthropic} --image path/to/screenshot.png
+```
+
+Example workflow:
+```python
+from screenshot_utils import take_screenshot_sync
+from llm_api import query_llm
+
+# Take a screenshot
+
+screenshot_path = take_screenshot_sync('https://example.com', 'screenshot.png')
+
+# Verify with LLM
+
+response = query_llm(
+    "What is the background color and title of this webpage?",
+    provider="openai",  # or "anthropic"
+    image_path=screenshot_path
+)
+print(response)
+```
+
+## LLM
+
+You always have an LLM at your side to help you with the task. For simple tasks, you could invoke the LLM by running the following command:
+```
+venv/bin/python ./tools/llm_api.py --prompt "What is the capital of France?" --provider "anthropic"
+```
+
+The LLM API supports multiple providers:
+- OpenAI (default, model: gpt-4o)
+- Azure OpenAI (model: configured via AZURE_OPENAI_MODEL_DEPLOYMENT in .env file, defaults to gpt-4o-ms)
+- DeepSeek (model: deepseek-chat)
+- Anthropic (model: claude-3-sonnet-20240229)
+- Gemini (model: gemini-pro)
+- Local LLM (model: Qwen/Qwen2.5-32B-Instruct-AWQ)
+
+But usually it's a better idea to check the content of the file and use the APIs in the `tools/llm_api.py` file to invoke the LLM if needed.
+
+## Web browser
+
+You could use the `tools/web_scraper.py` file to scrape the web.
+```
+venv/bin/python ./tools/web_scraper.py --max-concurrent 3 URL1 URL2 URL3
+```
+This will output the content of the web pages.
+
+## Search engine
+
+You could use the `tools/search_engine.py` file to search the web.
+```
+venv/bin/python ./tools/search_engine.py "your search keywords"
+```
+This will output the search results in the following format:
+```
+URL: https://example.com
+Title: This is the title of the search result
+Snippet: This is a snippet of the search result
+```
+If needed, you can further use the `web_scraper.py` file to scrape the web page content.
+
+# Lessons
+
+## User Specified Lessons
+
+- You have a python venv in ./venv. Use it.
+- Include info useful for debugging in the program output.
+- Read the file before you try to edit it.
+- Due to Cursor's limit, when you use `git` and `gh` and need to submit a multiline commit message, first write the message in a file, and then use `git commit -F <filename>` or similar command to commit. And then remove the file. Include "[Cursor] " in the commit message and PR title.
+
+## Cursor learned
+
+- For search results, ensure proper handling of different character encodings (UTF-8) for international queries
+- Add debug information to stderr while keeping the main output clean in stdout for better pipeline integration
+- When using seaborn styles in matplotlib, use 'seaborn-v0_8' instead of 'seaborn' as the style name due to recent seaborn version changes
+- Use 'gpt-4o' as the model name for OpenAI's GPT-4 with vision capabilities
+
+# Scratchpad
+
+## Current Task: Implement Personal Assistant Agent
+Adding a smart personal assistant that provides clothing recommendations based on weather and time.
+
+## Project Phases
+Phase 1: Location and Weather Integration
+[X] Create LocationUtils for location handling and validation
+[X] Create WeatherUtils for enhanced weather data processing
+[X] Update WeatherTool to use new utilities
+[X] Fix location validation for city+state format
+[X] Update orchestrator to maintain location context
+[X] Test enhanced weather functionality with fixed location handling
+
+Phase 2: Core Recommendation Engine
+[X] Clothing Recommendation Engine
+    [X] Create ClothingUtils with comprehensive clothing categories
+    [X] Implement weather-based clothing recommendations
+    [X] Create ClothingTool and integrate with agents
+    [X] Test clothing recommendation functionality
+
+Phase 3: Integration and Response Generation
+[ ] Create PersonalAssistantAgent class
+[ ] Implement smart response generation
+
+Phase 4: Testing and Refinement
+[ ] Test with various conditions
+[ ] Add response variety
+
+## Current Focus: Phase 3
+Ready to begin Integration and Response Generation:
+[ ] Create PersonalAssistantAgent class
+[ ] Implement smart response generation
+
+## Progress
+Completed:
+- Created LocationUtils with caching and validation
+- Created WeatherUtils with detailed weather processing
+- Updated WeatherTool to use new utilities
+- Added support for UV index, feels-like temperature, and precipitation data
+- Fixed location validation to better handle city+state combinations
+- Enhanced orchestrator with location context management
+- Implemented comprehensive clothing recommendation system
+- Added layered clothing suggestions based on weather conditions
+- Integrated special condition modifiers (rain, wind, UV)
+
+Issues Found & Fixed:
+- Location validation wasn't handling city+state format properly
+- Added better matching logic for location names
+- Improved error handling in location lookup
+- Added context management to maintain location awareness
+- Enhanced orchestrator to use stored location context
+
+Next Steps:
+1. Create PersonalAssistantAgent class for managing user interactions
+2. Implement smart response generation with context awareness
