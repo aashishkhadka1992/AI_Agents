@@ -109,12 +109,21 @@ class TestOrchestrator(unittest.TestCase):
 
     def test_location_validation(self):
         """Test location validation and error handling."""
+        # Enable test mode to prevent interactive prompts
+        self.orchestrator._test_mode = True
+        
         # Test with invalid location
         result = self.orchestrator.orchestrate_task("What's the weather like in InvalidCity123?")
+        self.assertIsInstance(result, dict)
+        self.assertIn("action", result)
+        self.assertIn("input", result)
         self.assertIn("location", result["input"].lower())
         
         # Test with valid location
         valid_result = self.orchestrator.orchestrate_task("What's the weather like in Tokyo?")
+        self.assertIsInstance(valid_result, dict)
+        self.assertIn("action", valid_result)
+        self.assertIn("input", valid_result)
         self.assertNotIn("couldn't find", valid_result["input"].lower())
 
     def test_memory_management(self):

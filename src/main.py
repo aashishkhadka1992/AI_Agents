@@ -19,7 +19,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def main():
+def initialize_orchestrator():
+    """Initialize and return the agent orchestrator."""
     try:
         # Load environment variables from .env file
         load_dotenv()
@@ -43,20 +44,29 @@ def main():
         )
         logger.info("Time Agent initialized")
 
-        # Create Clothing Agent with enhanced personalization
-        clothing_tool = ClothingTool()
-        
+        # Create Clothing Agent
         clothing_agent = Agent(
             Name="Clothing Agent",
             Description="Provides personalized clothing recommendations based on weather conditions, time, and user preferences",
-            Tools=[clothing_tool],
+            Tools=[ClothingTool()],
             Model=os.getenv("LLM_MODEL", "gpt-4o")
         )
         logger.info("Clothing Agent initialized")
 
-        # Create AgentOrchestrator
+        # Create and return AgentOrchestrator
         agent_orchestrator = AgentOrchestrator([weather_agent, time_agent, clothing_agent])
         logger.info("Agent Orchestrator initialized")
+        
+        return agent_orchestrator
+
+    except Exception as e:
+        logger.error(f"Error initializing orchestrator: {str(e)}")
+        raise
+
+def main():
+    try:
+        # Initialize orchestrator
+        agent_orchestrator = initialize_orchestrator()
 
         # Run the orchestrator
         logger.info("Starting Agent Orchestrator...")

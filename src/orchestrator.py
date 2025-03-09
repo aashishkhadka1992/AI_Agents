@@ -78,10 +78,10 @@ class AgentOrchestrator:
             user_input (str): User's request text
             
         Returns:
-            str: Validated location string
+            str: Validated location string or None if invalid
         """
         # First check if we already have a location
-        if self.location:
+        if self.location and "in" not in user_input:
             return self.location
 
         # If location is in the input, validate it
@@ -93,6 +93,10 @@ class AgentOrchestrator:
                     return location
             except:
                 pass
+
+        # For testing environments, don't prompt for input
+        if hasattr(self, '_test_mode'):
+            return None
 
         # Ask user for location in a friendly way
         print("I'd love to help! Could you tell me which city you're in? (You can include state/country for more accuracy)")
@@ -139,13 +143,22 @@ class AgentOrchestrator:
             dict: Response containing action and formatted result
         """
         try:
+            # Handle empty or invalid input
+            if not user_input or not user_input.strip():
+                return {
+                    "action": "respond_to_user",
+                    "input": "Hi! I can help you with weather updates, time information, and clothing recommendations. "
+                            "Just let me know what you'd like to know!"
+                }
+
             # Handle negative responses gracefully
             if user_input.lower() in ["no", "nope", "nothing"]:
                 return {"action": "respond_to_user", "input": "Alright! Let me know if you need anything else! 😊"}
 
-            # Keep memory of recent interactions
-            self.memory = self.memory[-self.max_memory:]
+            # Keep memory of recent interactions (maintain max size)
             self.memory.append(f"User: {user_input}")
+            if len(self.memory) > self.max_memory:
+                self.memory = self.memory[-self.max_memory:]
             
             # Determine if this is a summary request
             is_summary = any(word in user_input.lower() for word in 
@@ -155,8 +168,10 @@ class AgentOrchestrator:
             if is_summary or any(word in user_input.lower() for word in ['weather', 'time', 'wear']):
                 location = self.get_location(user_input)
                 if not location:
-                    return {"action": "respond_to_user", 
-                           "input": "I need a valid location to provide recommendations."}
+                    return {
+                        "action": "respond_to_user",
+                        "input": "I couldn't find that location. Please try again with a valid city name."
+                    }
 
             # For summary requests, get all information
             if is_summary:
@@ -193,7 +208,7 @@ class AgentOrchestrator:
                     return {"action": "respond_to_user", "input": response}
 
             return {"action": "respond_to_user", 
-                   "input": "I'm not sure how to help with that request."}
+                   "input": "I'm not sure how to help with that request. I can assist with weather updates, time information, and clothing recommendations."}
 
         except Exception as e:
             logger.error(f"Error in orchestration: {str(e)}")
