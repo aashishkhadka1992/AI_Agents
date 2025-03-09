@@ -2,13 +2,13 @@ import requests
 import logging
 from datetime import datetime
 import pytz
-from tools.base_tool import Tool
+from tools.base_tool import BaseTool
 
 logger = logging.getLogger(__name__)
 
-class TimeTool(Tool):
+class TimeTool(BaseTool):
     def __init__(self):
-        pass
+        super().__init__()
 
     def name(self):
         return "Time Agent"

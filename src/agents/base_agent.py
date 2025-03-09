@@ -3,7 +3,7 @@ import ast
 import os
 import requests
 from llm.llm_ops import query_llm
-from tools.base_tool import Tool
+from tools.base_tool import BaseTool
 import json
 import logging
 from typing import Union, Dict

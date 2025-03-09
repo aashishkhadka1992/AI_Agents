@@ -14,6 +14,21 @@ class LocationUtils:
         """Initialize location utilities."""
         self.cache = {}  # Simple in-memory cache
         self.geocoding_api = "https://geocoding-api.open-meteo.com/v1/search"
+        self.country_codes = {
+            'US': 'United States',
+            'UK': 'United Kingdom',
+            'UAE': 'United Arab Emirates',
+            # Add more common codes as needed
+        }
+        
+    def _normalize_country_code(self, location: str) -> str:
+        """Convert common country codes to full names."""
+        if ',' not in location:
+            return location
+            
+        city, country = [part.strip() for part in location.split(',', 1)]
+        country = self.country_codes.get(country, country)
+        return f"{city}, {country}"
         
     def validate_and_normalize_location(self, location: str) -> bool:
         """Validate location and normalize its format.
@@ -37,9 +52,12 @@ class LocationUtils:
             if not location:
                 raise LocationError("Location cannot be empty")
                 
+            # Normalize country codes
+            normalized_location = self._normalize_country_code(location)
+                
             # Query geocoding API
             params = {
-                "name": location,
+                "name": normalized_location,
                 "count": 1
             }
             
@@ -48,11 +66,20 @@ class LocationUtils:
             
             data = response.json()
             if not data.get("results"):
-                raise LocationError(
-                    message=f"Could not find location: {location}",
-                    location=location,
-                    details={"api_response": data}
-                )
+                # Try with just the city name
+                if ',' in location:
+                    city = location.split(',')[0].strip()
+                    params["name"] = city
+                    response = requests.get(self.geocoding_api, params=params)
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                if not data.get("results"):
+                    raise LocationError(
+                        message=f"Could not find location: {location}",
+                        location=location,
+                        details={"api_response": data}
+                    )
                 
             # Cache the result
             self.cache[location] = data["results"][0]

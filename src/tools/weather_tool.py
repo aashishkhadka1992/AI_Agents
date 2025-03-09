@@ -2,12 +2,14 @@ import requests
 import logging
 from datetime import datetime
 import pytz
-from tools.base_tool import Tool
+from tools.base_tool import BaseTool
+from utils.error_handler import LocationError
 
 logger = logging.getLogger(__name__)
 
-class WeatherTool(Tool):
+class WeatherTool(BaseTool):
     def __init__(self):
+        super().__init__()
         self.weather_codes = {
             0: "clear sky", 1: "mainly clear", 2: "partly cloudy", 3: "overcast",
             45: "foggy", 48: "depositing rime fog",
@@ -23,45 +25,6 @@ class WeatherTool(Tool):
 
     def description(self):
         return "Provides current weather information for a given location."
-
-    def _get_location_coordinates(self, location: str) -> tuple:
-        """Get coordinates for a location using Open-Meteo Geocoding API."""
-        try:
-            # Clean up location string
-            location = location.replace(", ", ",").strip()
-            
-            url = "https://geocoding-api.open-meteo.com/v1/search"
-            response = requests.get(url, params={"name": location, "count": 1})
-            data = response.json()
-            
-            if "results" in data and data["results"]:
-                result = data["results"][0]
-                return (
-                    result["latitude"], 
-                    result["longitude"],
-                    result["name"],
-                    result.get("country", "")
-                )
-            
-            # If no results, try without country code
-            if "," in location:
-                city = location.split(",")[0].strip()
-                response = requests.get(url, params={"name": city, "count": 1})
-                data = response.json()
-                
-                if "results" in data and data["results"]:
-                    result = data["results"][0]
-                    return (
-                        result["latitude"], 
-                        result["longitude"],
-                        result["name"],
-                        result.get("country", "")
-                    )
-            
-            return None
-        except Exception as e:
-            logger.error(f"Error getting coordinates for {location}: {e}")
-            return None
 
     def _get_weather_data(self, lat: float, lon: float) -> dict:
         """Get current weather data from Open-Meteo API."""
@@ -104,12 +67,15 @@ class WeatherTool(Tool):
     def use(self, location: str) -> str:
         """Get current weather for a location."""
         try:
-            # Get coordinates
-            loc_data = self._get_location_coordinates(location)
-            if not loc_data:
+            # Get location info
+            try:
+                location_info = self.location_utils.get_location_info(location)
+                lat = location_info["latitude"]
+                lon = location_info["longitude"]
+                name = location_info["name"]
+                country = location_info.get("country", "")
+            except LocationError as e:
                 return f"Sorry, I couldn't find the location: {location}"
-            
-            lat, lon, name, country = loc_data
             
             # Get weather data
             weather = self._get_weather_data(lat, lon)

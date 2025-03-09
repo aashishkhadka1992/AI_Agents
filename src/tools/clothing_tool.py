@@ -1,12 +1,14 @@
 import requests
 import logging
-from typing import Dict, Optional
-from tools.base_tool import Tool
+from typing import Dict
+from tools.base_tool import BaseTool
+from utils.error_handler import LocationError
 
 logger = logging.getLogger(__name__)
 
-class ClothingTool(Tool):
+class ClothingTool(BaseTool):
     def __init__(self):
+        super().__init__()
         # Basic clothing recommendations by temperature range (°C)
         self.recommendations = {
             'very_cold': {  # Below 0°C
@@ -46,35 +48,6 @@ class ClothingTool(Tool):
 
     def description(self):
         return "Recommends clothing based on weather conditions."
-
-    def _get_location_coordinates(self, location: str) -> tuple:
-        """Get coordinates for a location using Open-Meteo Geocoding API."""
-        try:
-            # Clean up location string
-            location = location.replace(", ", ",").strip()
-            
-            url = "https://geocoding-api.open-meteo.com/v1/search"
-            response = requests.get(url, params={"name": location, "count": 1})
-            data = response.json()
-            
-            if "results" in data and data["results"]:
-                result = data["results"][0]
-                return (result["latitude"], result["longitude"])
-            
-            # If no results, try without country code
-            if "," in location:
-                city = location.split(",")[0].strip()
-                response = requests.get(url, params={"name": city, "count": 1})
-                data = response.json()
-                
-                if "results" in data and data["results"]:
-                    result = data["results"][0]
-                    return (result["latitude"], result["longitude"])
-            
-            return None
-        except Exception as e:
-            logger.error(f"Error getting coordinates for {location}: {e}")
-            return None
 
     def _get_weather_data(self, lat: float, lon: float) -> dict:
         """Get current weather data from Open-Meteo API."""
@@ -135,13 +108,18 @@ class ClothingTool(Tool):
     def use(self, location: str) -> str:
         """Get clothing recommendations for a location."""
         try:
-            # Get coordinates
-            coords = self._get_location_coordinates(location)
-            if not coords:
+            # Get location info
+            try:
+                location_info = self.location_utils.get_location_info(location)
+                lat = location_info["latitude"]
+                lon = location_info["longitude"]
+                name = location_info["name"]
+                country = location_info.get("country", "")
+            except LocationError as e:
                 return f"Sorry, I couldn't find the location: {location}"
             
             # Get weather data
-            weather = self._get_weather_data(*coords)
+            weather = self._get_weather_data(lat, lon)
             if not weather:
                 return f"Sorry, I couldn't get weather data for {location}"
 
@@ -157,7 +135,8 @@ class ClothingTool(Tool):
             )
 
             # Format response
-            response = [f"Based on the current temperature of {weather['temperature']}°C in {location}, here's what you should wear:"]
+            loc_name = f"{name}, {country}" if country else name
+            response = [f"Based on the current temperature of {weather['temperature']}°C in {loc_name}, here's what you should wear:"]
             
             for category, items in recommendations.items():
                 if items:
