@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  ai-assistant:
+    build: .
+    container_name: ai-assistant
+    volumes:
+      - ./src:/app/src
+      - ./.env:/app/.env
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - FLASK_APP=src/app.py
+      - FLASK_ENV=production
+    ports:
+      - "5000:5000"
+    stdin_open: true
+    tty: true
+    restart: unless-stopped 
