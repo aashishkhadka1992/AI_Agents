@@ -6,6 +6,7 @@ import re
 from openai import OpenAI
 import httpx
 
+# Get logger but don't set level (will use parent's level)
 logger = logging.getLogger(__name__)
 
 def clean_json_response(response: str) -> str:
@@ -40,19 +41,13 @@ def query_llm(prompt: str, model=None):
     try:
         use_codegenie = os.getenv("USE_CODEGENIE", "false").lower() == "true"
         model = model or os.getenv("LLM_MODEL", "gpt-4o-mini")
-        logger.debug(f"Configuration - USE_CODEGENIE: {use_codegenie}, Initial Model: {model}")
+        logger.info(f"Using {'Code Genie' if use_codegenie else 'OpenAI'} API with model {model}")
         
         if use_codegenie:
-            # Use Code Genie API
             client = _init_codegenie_client()
-            logger.debug("Using Code Genie API")
-            
-            # Format model name for Code Genie
             model_name = f"openai/{model}" if not model.startswith("openai/") else model
-            logger.debug(f"Formatted model name for Code Genie: {model_name}")
             
             try:
-                logger.debug("Sending request to Code Genie API...")
                 completion = client.chat.completions.create(
                     model=model_name,
                     messages=[
@@ -62,16 +57,11 @@ def query_llm(prompt: str, model=None):
                     max_tokens=150,
                     temperature=0.2
                 )
-                logger.debug(f"Code Genie API response structure: {completion}")
                 final_response = completion.choices[0].message.content.strip()
-                logger.debug(f"Successfully extracted response from Code Genie API")
             except Exception as e:
-                logger.error(f"Code Genie API call failed with error type {type(e).__name__}: {str(e)}")
-                logger.error(f"Model used: {model_name}")
-                logger.error(f"Base URL: {os.getenv('CODEGENIE_BASE_URL')}")
+                logger.error(f"Code Genie API call failed: {str(e)}")
                 raise
         else:
-            # Use OpenAI API
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
                 raise ValueError("OPENAI_API_KEY environment variable not set")
@@ -87,7 +77,6 @@ def query_llm(prompt: str, model=None):
                 "temperature": 0.2
             }
             
-            logger.debug("Using OpenAI API")
             response = requests.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers=headers,
@@ -97,10 +86,7 @@ def query_llm(prompt: str, model=None):
             response.raise_for_status()
             final_response = response.json()['choices'][0]['message']['content'].strip()
         
-        logger.debug(f"Raw response from LLM: {final_response}")
         cleaned_response = clean_json_response(final_response)
-        logger.debug(f"Cleaned response: {cleaned_response}")
-        
         return cleaned_response
         
     except requests.exceptions.RequestException as e:

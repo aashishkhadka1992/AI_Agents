@@ -8,6 +8,7 @@ import json
 import logging
 from typing import Union, Dict
 
+# Get logger but don't set level (will use parent's level)
 logger = logging.getLogger(__name__)
 
 class Agent:
