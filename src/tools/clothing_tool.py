@@ -105,9 +105,13 @@ class ClothingTool(BaseTool):
         if wind_speed > 20:
             recommendations['outer'] = recommendations.get('outer', []) + ['Windbreaker']
 
-    def use(self, location: str) -> str:
+    def use(self, location) -> str:
         """Get clothing recommendations for a location."""
         try:
+            # Handle dictionary input
+            if isinstance(location, dict):
+                location = location.get('location', '')
+            
             # Get location info
             try:
                 location_info = self.location_utils.get_location_info(location)

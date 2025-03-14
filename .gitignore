@@ -227,3 +227,8 @@ tools/screenshot_utils.py
 tools/search_engine.py
 tools/web_scraper.py
 tools/llm_api.py
+
+
+# Scratch files
+scratch.py
+debug.log

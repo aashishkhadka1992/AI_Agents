@@ -53,9 +53,13 @@ class TimeTool(BaseTool):
             logger.error(f"Error getting timezone for {location}: {e}")
             return None
 
-    def use(self, location: str) -> str:
+    def use(self, location) -> str:
         """Get current time for a location."""
         try:
+            # Handle dictionary input
+            if isinstance(location, dict):
+                location = location.get('location', '')
+            
             # Get timezone
             tz_data = self._get_location_timezone(location)
             if not tz_data:
