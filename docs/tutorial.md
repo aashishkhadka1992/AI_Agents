@@ -72,28 +72,151 @@ from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-class BaseError(Exception):
-    """Base error class for the application."""
-    def __init__(self, message: str):
+class AgentError(Exception):
+    """Base exception for agent-related errors."""
+    def __init__(self, message: str, agent_name: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         self.message = message
+        self.agent_name = agent_name
+        self.details = details or {}
         super().__init__(self.message)
-        logger.error(f"Error: {message}")
+        
+        # Log the error
+        logger.error(f"Agent Error [{agent_name or 'Unknown'}]: {message}")
+        if details:
+            logger.debug(f"Error details: {details}")
 
-class LocationError(BaseError):
+class ToolError(Exception):
+    """Base exception for tool-related errors."""
+    def __init__(self, message: str, tool_name: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
+        self.message = message
+        self.tool_name = tool_name
+        self.details = details or {}
+        super().__init__(self.message)
+        
+        # Log the error
+        logger.error(f"Tool Error [{tool_name or 'Unknown'}]: {message}")
+        if details:
+            logger.debug(f"Error details: {details}")
+
+class LocationError(Exception):
     """Exception for location-related errors."""
     def __init__(self, message: str, location: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
+        self.message = message
         self.location = location
         self.details = details or {}
-        super().__init__(message)
+        super().__init__(self.message)
+        
+        # Log the error
         logger.error(f"Location Error [{location or 'Unknown'}]: {message}")
+        if details:
+            logger.debug(f"Error details: {details}")
 
-class ToolError(BaseError):
-    """Exception for tool-related errors."""
-    def __init__(self, message: str, tool_name: Optional[str] = None):
-        self.tool_name = tool_name
-        super().__init__(message)
-        logger.error(f"Tool Error [{tool_name or 'Unknown'}]: {message}")
+class OrchestratorError(Exception):
+    """Exception for orchestrator-related errors."""
+    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+        self.message = message
+        self.details = details or {}
+        super().__init__(self.message)
+        
+        # Log the error
+        logger.error(f"Orchestrator Error: {message}")
+        if details:
+            logger.debug(f"Error details: {details}")
+
+class LLMError(Exception):
+    """Exception for LLM-related errors."""
+    def __init__(self, message: str, model: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
+        self.message = message
+        self.model = model
+        self.details = details or {}
+        super().__init__(self.message)
+        
+        # Log the error
+        logger.error(f"LLM Error [{model or 'Unknown'}]: {message}")
+        if details:
+            logger.debug(f"Error details: {details}")
+
+def handle_agent_error(func):
+    """Decorator for handling agent-related errors."""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except AgentError as e:
+            logger.error(f"Agent operation failed: {str(e)}")
+            return {"action": "respond_to_user", "input": f"I encountered an error: {str(e)}"}
+        except Exception as e:
+            logger.error(f"Unexpected error in agent operation: {str(e)}")
+            return {"action": "respond_to_user", "input": "I encountered an unexpected error."}
+    return wrapper
+
+def handle_tool_error(func):
+    """Decorator for handling tool-related errors."""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except ToolError as e:
+            logger.error(f"Tool operation failed: {str(e)}")
+            return f"Tool error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in tool operation: {str(e)}")
+            return "Tool encountered an unexpected error."
+    return wrapper
+
+def format_error_response(error: Exception) -> Dict[str, str]:
+    """Format error into a user-friendly response."""
+    if isinstance(error, LocationError):
+        return {
+            "action": "respond_to_user",
+            "input": f"I couldn't find that location. Please try another city or check the spelling."
+        }
+    elif isinstance(error, ToolError):
+        return {
+            "action": "respond_to_user",
+            "input": f"I had trouble getting that information. {str(error)}"
+        }
+    elif isinstance(error, LLMError):
+        return {
+            "action": "respond_to_user",
+            "input": "I'm having trouble processing your request. Please try again in a moment."
+        }
+    else:
+        return {
+            "action": "respond_to_user",
+            "input": "I encountered an unexpected error. Please try again."
+        }
+
+def log_error(error: Exception, context: Optional[Dict[str, Any]] = None) -> None:
+    """Log error with additional context."""
+    error_type = type(error).__name__
+    error_msg = str(error)
+    
+    if context:
+        logger.error(f"{error_type}: {error_msg} | Context: {context}")
+    else:
+        logger.error(f"{error_type}: {error_msg}")
+        
+    if hasattr(error, 'details') and error.details:
+        logger.debug(f"Error details: {error.details}")
 ```
+
+This error handling system provides:
+- Specialized error classes for different types of errors (Agent, Tool, Location, Orchestrator, LLM)
+- Detailed error logging with context and debug information
+- Error handling decorators for agents and tools
+- User-friendly error response formatting
+- Centralized error logging utility
+
+Each error class includes:
+- Custom message
+- Optional component-specific information (e.g., agent_name, tool_name, location)
+- Optional details dictionary for additional context
+- Automatic error logging with appropriate severity levels
+
+The utility functions help with:
+- Consistent error handling across the application
+- Converting errors to user-friendly responses
+- Proper error logging with context
+- Decorators for standardized error handling in agents and tools
 
 ### 2. Base Tool
 
@@ -136,31 +259,111 @@ Create the base agent class:
 
 ```python
 # src/agents/base_agent.py
+from abc import ABC, abstractmethod
+import ast
+import json
 import logging
-from typing import Dict, List, Union
+from typing import Union, Dict
+from llm.llm_ops import query_llm
 from tools.base_tool import BaseTool
 
 logger = logging.getLogger(__name__)
 
 class Agent:
-    """Base agent class that handles tool selection and execution."""
+    """Base agent class that handles tool selection and execution.
     
-    def __init__(self, Name: str, Description: str, Tools: List[BaseTool], Model: str):
+    This class provides the foundation for specialized agents by managing:
+    - Tool selection and execution
+    - Conversation memory
+    - Input processing
+    - Response formatting
+    """
+
+    def __init__(self, Name: str, Description: str, Tools: list, Model: str):
+        """Initialize the agent with required components.
+        
+        Args:
+            Name (str): Name of the agent
+            Description (str): Description of agent's capabilities
+            Tools (list): List of available tools
+            Model (str): LLM model to use for processing
+        """
+        self.memory = []
         self.name = Name
         self.description = Description
-        self.tools = {tool.name(): tool for tool in Tools}
+        self.tools = Tools
         self.model = Model
-        logger.info(f"Initialized {self.name} with {len(Tools)} tools")
+        self.max_memory = 10
+        logger.debug(f"Initialized {self.name} agent with model {self.model}")
 
-    def process_input(self, user_input: str) -> str:
-        """Process user input and determine appropriate action."""
+    def json_parser(self, input_string):
+        """Parse string input into JSON/dict format."""
         try:
-            # Basic processing - in real implementation, this would use
-            # the model to determine the appropriate tool
-            return self.use_tool(list(self.tools.keys())[0], user_input)
+            logger.debug(f"Parsing input string: {input_string}")
+            if isinstance(input_string, (dict, list)):
+                return input_string
+
+            python_dict = ast.literal_eval(input_string)
+            json_string = json.dumps(python_dict)
+            json_dict = json.loads(json_string)
+
+            if isinstance(json_dict, (dict, list)):
+                return json_dict
+
+            raise ValueError("Invalid JSON response")
+        except Exception as e:
+            logger.error(f"Error parsing JSON: {str(e)}")
+            raise
+
+    def process_input(self, user_input):
+        """Process user input and determine appropriate action.
+        
+        This method:
+        1. Updates conversation memory
+        2. Determines if a tool should be used
+        3. Executes the appropriate tool or returns direct response
+        """
+        try:
+            self.memory.append(f"User: {user_input}")
+            if len(self.memory) > self.max_memory:
+                self.memory.pop(0)
+
+            context = "\n".join(self.memory)
+            tool_descriptions = "\n".join([f"- {tool.name()}: {tool.description()}" for tool in self.tools])
+            response_format = {"action":"", "args":""}
+
+            prompt = f"""Context:
+            {context}
+
+            Available tools:
+            {tool_descriptions}
+
+            Based on the user's input and context, decide if you should use a tool or respond directly.        
+            If you identify a action, respond with the tool name and the arguments for the tool.        
+            If you decide to respond directly to the user then make the action "respond_to_user" with args as your response in the following format.
+
+            Response Format:
+            {response_format}
+            """
+
+            logger.debug(f"Sending prompt to LLM: {prompt}")
+            response = query_llm(prompt)
+            logger.debug(f"Received response from LLM: {response}")
+            
+            self.memory.append(f"Agent: {response}")
+
+            response_dict = self.json_parser(response)
+
+            # Check if any tool can handle the input
+            for tool in self.tools:
+                if tool.name().lower() == response_dict["action"].lower():
+                    logger.debug(f"Using tool: {tool.name()} with args: {response_dict['args']}")
+                    return tool.use(response_dict["args"])
+
+            return response_dict
         except Exception as e:
             logger.error(f"Error processing input: {str(e)}")
-            return f"Sorry, I encountered an error: {str(e)}"
+            raise
 
     def use_tool(self, tool_name: str, args: Union[str, Dict]) -> str:
         """Execute a specific tool with given arguments."""
@@ -168,11 +371,36 @@ class Agent:
             tool = self.tools.get(tool_name)
             if not tool:
                 return f"Tool {tool_name} not found"
+
+            # If args is a dictionary, extract the location value
+            if isinstance(args, dict) and 'location' in args:
+                args = args['location']
+            elif isinstance(args, dict):
+                # If no location in dict, convert the first value to string
+                args = str(next(iter(args.values())))
+
             return tool.use(args)
+
         except Exception as e:
-            logger.error(f"Error using tool {tool_name}: {str(e)}")
-            return f"Error using {tool_name}"
+            logging.error(f"Error using tool {tool_name}: {str(e)}")
+            return f"Error using tool {tool_name}"
 ```
+
+This base agent class provides:
+- Conversation memory management with a maximum history size
+- JSON parsing for structured communication
+- LLM-based tool selection
+- Flexible tool execution with both string and dictionary arguments
+- Comprehensive error handling and logging
+- Context-aware processing through memory of past interactions
+
+The agent can:
+- Maintain a conversation history
+- Parse and validate JSON responses
+- Select appropriate tools based on user input
+- Execute tools with proper argument handling
+- Handle errors gracefully with detailed logging
+- Provide consistent response formatting
 
 This completes Phase 1 of our implementation. In the next phase, we'll implement the core tools (Weather, Time, and Clothing) that our agents will use.
 
@@ -186,6 +414,8 @@ First, let's create the location handling utility that all tools will share:
 
 ```python
 # src/utils/location_utils.py
+"""Location utilities for handling and validating location data."""
+
 import requests
 import logging
 from typing import Optional, Dict, Any
@@ -217,7 +447,17 @@ class LocationUtils:
         return f"{city}, {country}"
         
     def validate_and_normalize_location(self, location: str) -> bool:
-        """Validate location and normalize its format."""
+        """Validate location and normalize its format.
+        
+        Args:
+            location (str): Location string to validate
+            
+        Returns:
+            bool: True if location is valid
+            
+        Raises:
+            LocationError: If location is invalid or API call fails
+        """
         try:
             # Check cache first
             if location in self.cache:
@@ -274,7 +514,17 @@ class LocationUtils:
             )
             
     def get_location_info(self, location: str) -> Dict[str, Any]:
-        """Get detailed information about a location."""
+        """Get detailed information about a location.
+        
+        Args:
+            location (str): Location string
+            
+        Returns:
+            dict: Location information including coordinates
+            
+        Raises:
+            LocationError: If location is invalid or not found
+        """
         try:
             # Validate and get from cache if available
             self.validate_and_normalize_location(location)
@@ -291,7 +541,32 @@ class LocationUtils:
                 message=f"Error getting location info: {str(e)}",
                 location=location
             )
+            
+    def clear_cache(self) -> None:
+        """Clear the location cache."""
+        self.cache = {}
 ```
+
+This location utility provides:
+- Location validation and normalization
+- Country code standardization
+- Geocoding using the Open-Meteo API
+- In-memory caching for performance
+- Comprehensive error handling
+- Detailed location information retrieval
+
+Key features:
+1. **Caching**: Stores validated locations to reduce API calls
+2. **Country Code Normalization**: Converts common codes (US, UK) to full names
+3. **Flexible Validation**: Tries both full location and city-only searches
+4. **Error Handling**: Provides detailed error information with context
+5. **Clean API**: Simple interface for validation and information retrieval
+
+The utility is used by all tools that need location information, ensuring consistent handling of:
+- Location validation
+- Geocoding
+- Error handling
+- Cache management
 
 ### 2. Weather Tool
 
@@ -434,17 +709,56 @@ class TimeTool(BaseTool):
     def description(self):
         return "Provides current time for a given location."
 
-    def use(self, location: str) -> str:
+    def _get_location_timezone(self, location: str) -> str:
+        """Get timezone for a location using Open-Meteo Geocoding API."""
+        try:
+            # Clean up location string
+            location = location.replace(", ", ",").strip()
+            
+            url = "https://geocoding-api.open-meteo.com/v1/search"
+            response = requests.get(url, params={"name": location, "count": 1})
+            data = response.json()
+            
+            if "results" in data and data["results"]:
+                result = data["results"][0]
+                return (
+                    result.get("timezone", "UTC"),
+                    result["name"],
+                    result.get("country", "")
+                )
+            
+            # If no results, try without country code
+            if "," in location:
+                city = location.split(",")[0].strip()
+                response = requests.get(url, params={"name": city, "count": 1})
+                data = response.json()
+                
+                if "results" in data and data["results"]:
+                    result = data["results"][0]
+                    return (
+                        result.get("timezone", "UTC"),
+                        result["name"],
+                        result.get("country", "")
+                    )
+            
+            return None
+        except Exception as e:
+            logger.error(f"Error getting timezone for {location}: {e}")
+            return None
+
+    def use(self, location) -> str:
         """Get current time for a location."""
         try:
-            # Get location info
-            try:
-                location_info = self.location_utils.get_location_info(location)
-                timezone = location_info.get("timezone", "UTC")
-                name = location_info["name"]
-                country = location_info.get("country", "")
-            except Exception as e:
+            # Handle dictionary input
+            if isinstance(location, dict):
+                location = location.get('location', '')
+            
+            # Get timezone
+            tz_data = self._get_location_timezone(location)
+            if not tz_data:
                 return f"Sorry, I couldn't find the location: {location}"
+            
+            timezone, name, country = tz_data
             
             # Format location name
             loc_name = f"{name}, {country}" if country else name
@@ -464,6 +778,26 @@ class TimeTool(BaseTool):
             logger.error(f"Error in TimeTool: {e}")
             return "Sorry, I encountered an error getting the time information."
 ```
+
+This time tool provides:
+- Direct timezone lookup using the Open-Meteo Geocoding API
+- Proper error handling and logging
+- Support for both string and dictionary inputs
+- Clean response formatting with location name and timezone
+- Integration with the `pytz` library for accurate timezone conversions
+
+Key features:
+1. **Direct API Integration**: Uses Open-Meteo Geocoding API for timezone lookup
+2. **Error Management**: Comprehensive error handling with proper logging
+3. **Flexible Input**: Supports both string and dictionary inputs
+4. **Clean Output**: Provides formatted responses with location name and timezone
+5. **Timezone Accuracy**: Uses `pytz` for reliable timezone conversions
+
+The tool follows the same pattern as other tools in the system:
+- Inherits from `BaseTool` for consistent behavior
+- Provides detailed logging for debugging
+- Returns user-friendly error messages
+- Handles location lookup and timezone conversion
 
 ### 4. Clothing Tool
 
@@ -522,6 +856,33 @@ class ClothingTool(BaseTool):
     def description(self):
         return "Recommends clothing based on weather conditions."
 
+    def _get_weather_data(self, lat: float, lon: float) -> dict:
+        """Get current weather data from Open-Meteo API."""
+        try:
+            url = "https://api.open-meteo.com/v1/forecast"
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "current": ["temperature_2m", "weather_code", "wind_speed_10m"],
+                "timezone": "auto"
+            }
+            
+            response = requests.get(url, params=params)
+            data = response.json()
+            
+            if "current" not in data:
+                return None
+                
+            current = data["current"]
+            return {
+                "temperature": current["temperature_2m"],
+                "weather_code": current["weather_code"],
+                "wind_speed": current["wind_speed_10m"]
+            }
+        except Exception as e:
+            logger.error(f"Error getting weather data: {e}")
+            return None
+
     def _get_temperature_range(self, temp: float) -> str:
         """Determine temperature range category."""
         if temp < 0:
@@ -551,9 +912,13 @@ class ClothingTool(BaseTool):
         if wind_speed > 20:
             recommendations['outer'] = recommendations.get('outer', []) + ['Windbreaker']
 
-    def use(self, location: str) -> str:
+    def use(self, location) -> str:
         """Get clothing recommendations for a location."""
         try:
+            # Handle dictionary input
+            if isinstance(location, dict):
+                location = location.get('location', '')
+            
             # Get location info
             try:
                 location_info = self.location_utils.get_location_info(location)
@@ -596,6 +961,28 @@ class ClothingTool(BaseTool):
             logger.error(f"Error in ClothingTool: {e}")
             return "Sorry, I encountered an error getting clothing recommendations."
 ```
+
+This clothing tool provides:
+- Temperature-based clothing recommendations with five distinct ranges
+- Weather condition adjustments for rain, snow, and wind
+- Integration with the Open-Meteo API for weather data
+- Proper error handling and logging
+- Support for both string and dictionary inputs
+- Clean response formatting with categorized recommendations
+
+Key features:
+1. **Comprehensive Recommendations**: Pre-defined clothing suggestions for different temperature ranges
+2. **Weather Adaptability**: Adjusts recommendations based on precipitation and wind conditions
+3. **Location Integration**: Uses LocationUtils for consistent location handling
+4. **Error Management**: Comprehensive error handling with proper logging
+5. **Clean Output**: Provides formatted responses with categorized clothing recommendations
+
+The tool follows the same pattern as other tools in the system:
+- Inherits from `BaseTool` for consistent behavior
+- Uses shared utilities for location handling
+- Provides detailed logging for debugging
+- Returns user-friendly error messages
+- Handles both weather data fetching and recommendation logic
 
 This completes Phase 2 of our implementation. We now have all the core tools ready:
 - LocationUtils for handling location validation and geocoding
